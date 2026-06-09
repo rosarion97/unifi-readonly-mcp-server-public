@@ -1,0 +1,36 @@
+# Keep credentials out of the image build context. .env is mounted at
+# runtime (--env-file) or supplied as a podman secret — never baked into
+# the image.
+.env
+*.env
+**/.env
+!.env.example
+
+# Python caches / build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Editor / OS
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Docs aren't needed in the image
+README.md

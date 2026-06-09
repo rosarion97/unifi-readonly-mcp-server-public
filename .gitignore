@@ -1,0 +1,45 @@
+# Sensitive / agent-local files — MUST NEVER be published to this public repo
+CLAUDE.md
+AGENTS.md
+.claude/
+.cursor/
+
+# Credentials — never commit (recursive: covers podman/.env, docker/.env, etc.)
+.env
+*.env
+**/.env
+!.env.example
+!**/.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

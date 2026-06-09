@@ -1,0 +1,47 @@
+version: "2"
+registry:
+  unifi-readonly:
+    name: Ubiquiti UniFi Read-Only
+    description: Query a single Ubiquiti UniFi OS console in read-only mode via the Network Integration API (X-API-KEY) and the Classic Controller API (cookie session). Retrieve site/device inventory, clients, networks (VLANs), WiFi broadcasts (SSIDs), firewall zones/policies, ACL rules, DNS policies, switching topology, VPN tunnels, RADIUS profiles, events, alarms, rogue APs, DPI aggregates, and reports — without making any configuration changes. The server is pinned to a single site via UNIFI_SITE_ID; site-scoped tools cannot target a different site. The Site Manager (cloud) API is intentionally NOT wrapped. Not affiliated with or endorsed by Ubiquiti.
+    categories:
+      - network
+      - monitoring
+      - wireless
+    image: unifi-readonly-mcp:latest
+    secrets:
+      - name: UNIFI_API_KEY
+        env: UNIFI_API_KEY
+        required: true
+        description: Network Integration API key (UniFi Network UI → Settings → Control Plane → Integrations → Create API Key). Generate it as a Limited Admin (Read-Only) local account; the key inherits the parent admin's permissions.
+      - name: UNIFI_SITE_ID
+        env: UNIFI_SITE_ID
+        required: true
+        description: Integration-API site UUID this instance is pinned to. Site-scoped tools cannot target a different site. Discover IDs with unifi_int_list_sites.
+      - name: UNIFI_CLASSIC_USERNAME
+        env: UNIFI_CLASSIC_USERNAME
+        required: false
+        description: Classic-API username. Only needed for the unifi_classic_* tools. Use a dedicated local Limited Admin (Read-Only) — never a UI.com cloud account (MFA breaks non-interactive login).
+      - name: UNIFI_CLASSIC_PASSWORD
+        env: UNIFI_CLASSIC_PASSWORD
+        required: false
+        description: Classic-API password. Only needed for the unifi_classic_* tools.
+      - name: UNIFI_HOST
+        env: UNIFI_HOST
+        required: true
+        description: UniFi OS console host or IP (no scheme). Example: 192.168.1.1
+      - name: UNIFI_PORT
+        env: UNIFI_PORT
+        required: false
+        description: TLS port. 443 on UniFi OS hardware (UDM/UCG/UDR/UDW); 11443 on UniFi OS Server (software install). Default 443.
+      - name: UNIFI_SITE_NAME
+        env: UNIFI_SITE_NAME
+        required: false
+        description: Classic-API short site name (distinct from the Integration UUID). Defaults to "default".
+      - name: UNIFI_VERIFY_TLS
+        env: UNIFI_VERIFY_TLS
+        required: false
+        description: Verify the console's TLS certificate. Default false — UniFi OS ships with self-signed certs. Set true once a real cert is installed.
+      - name: UNIFI_MAX_RESPONSE_BYTES
+        env: UNIFI_MAX_RESPONSE_BYTES
+        required: false
+        description: JSON byte cap per tool response. Default 120000 (~30k tokens).
