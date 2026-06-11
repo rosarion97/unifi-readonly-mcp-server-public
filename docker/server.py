@@ -43,12 +43,41 @@ from mcp.server.fastmcp import FastMCP
 
 DEFAULT_TIMEOUT = 30  # seconds
 
+
+def _env(name: str, default: str = "") -> str:
+    """Read an env var, treating empty values and the Docker MCP gateway's
+    sentinel ``<UNKNOWN>`` as unset.
+
+    The gateway injects every secret declared in the catalog. If the user
+    has not stored a value for an optional secret, the gateway still sets
+    the env var — to the literal string ``<UNKNOWN>``. A naive
+    ``os.environ.get(name, default)`` would never see that as missing, so
+    code like ``int(os.environ.get("UNIFI_MAX_RESPONSE_BYTES", "120000"))``
+    would crash with ``ValueError: invalid literal for int() with base 10:
+    '<UNKNOWN>'`` at module load. This helper normalizes both cases so the
+    rest of the file can treat the gateway and direct env-file paths
+    identically.
+    """
+    value = os.environ.get(name, "").strip()
+    if not value or value == "<UNKNOWN>":
+        return default
+    return value
+
+
+def _require_env(name: str, hint: str) -> str:
+    value = _env(name)
+    if not value:
+        print(f"ERROR: {name} is not set. {hint}", file=sys.stderr)
+        sys.exit(1)
+    return value
+
+
 # Cap the JSON size of any single tool response. UniFi endpoints like
 # /stat/event, /stat/sta, /stat/dpi, and /clients can otherwise return
 # megabytes of JSON and blow past the model's context window. Override with
 # UNIFI_MAX_RESPONSE_BYTES (e.g. 250000 for big-window models).
 MAX_RESPONSE_BYTES = max(
-    int(os.environ.get("UNIFI_MAX_RESPONSE_BYTES", "120000")),
+    int(_env("UNIFI_MAX_RESPONSE_BYTES", "120000")),
     10_000,
 )
 
@@ -59,20 +88,12 @@ EVENT_PER_PAGE_DEFAULT = 25
 LIST_PER_PAGE_DEFAULT = 50
 
 
-def _require_env(name: str, hint: str) -> str:
-    value = os.environ.get(name, "").strip()
-    if not value:
-        print(f"ERROR: {name} is not set. {hint}", file=sys.stderr)
-        sys.exit(1)
-    return value
-
-
 UNIFI_HOST = _require_env(
     "UNIFI_HOST",
     "Provide the UniFi OS console host or IP (e.g. 192.168.1.1) via "
     "--env-file .env or a podman/docker secret injected with type=env.",
 )
-UNIFI_PORT = os.environ.get("UNIFI_PORT", "443").strip() or "443"
+UNIFI_PORT = _env("UNIFI_PORT", "443")
 
 UNIFI_API_KEY = _require_env(
     "UNIFI_API_KEY",
@@ -90,19 +111,17 @@ UNIFI_SITE_ID = _require_env(
     "by calling unifi_int_list_sites once with a temporary configuration, "
     "then pin the chosen UUID.",
 )
-UNIFI_SITE_NAME = (
-    os.environ.get("UNIFI_SITE_NAME", "default").strip() or "default"
-)
+UNIFI_SITE_NAME = _env("UNIFI_SITE_NAME", "default")
 
 # Classic API auth is optional — if absent, only Integration tools work and
 # Classic tools raise a clear ValueError instead of failing at startup.
-UNIFI_CLASSIC_USERNAME = os.environ.get("UNIFI_CLASSIC_USERNAME", "").strip()
-UNIFI_CLASSIC_PASSWORD = os.environ.get("UNIFI_CLASSIC_PASSWORD", "")
+UNIFI_CLASSIC_USERNAME = _env("UNIFI_CLASSIC_USERNAME")
+UNIFI_CLASSIC_PASSWORD = _env("UNIFI_CLASSIC_PASSWORD")
 
 # TLS verification. UniFi OS ships with a self-signed cert by default; most
 # homelab and on-LAN deployments leave verify off. Set true once a real cert
 # is installed on the console.
-_verify_env = os.environ.get("UNIFI_VERIFY_TLS", "false").strip().lower()
+_verify_env = _env("UNIFI_VERIFY_TLS", "false").lower()
 UNIFI_VERIFY_TLS = _verify_env in {"1", "true", "yes", "on"}
 
 if not UNIFI_VERIFY_TLS:
@@ -1658,6 +1677,35 @@ def attempt_write_operation(
     returns the standard refusal string and performs no network I/O.
     """
     return f"{READ_ONLY_REFUSAL} (attempted {method.upper()} {path})"
+
+
+# ===========================================================================
+# INFO RESOURCE (server self-description)
+# ===========================================================================
+# The single MCP resource this server exposes. MCP clients (Claude Desktop)
+# surface resources as attachable info cards, giving an at-a-glance view of
+# the instance configuration. Built only from env-derived values captured at
+# startup — performs NO network I/O and NEVER echoes a credential. Presence
+# of optional credentials is reported as yes/no only.
+
+
+@mcp.resource("unifi://info")
+def unifi_info() -> str:
+    """Configuration summary of this server instance — no secrets, no I/O."""
+    classic_configured = (
+        "yes" if (UNIFI_CLASSIC_USERNAME and UNIFI_CLASSIC_PASSWORD) else "no"
+    )
+    return (
+        f"Host: {UNIFI_HOST}\n"
+        f"Port: {UNIFI_PORT}\n"
+        f"Integration API key configured: yes\n"
+        f"Integration site ID: {UNIFI_SITE_ID}\n"
+        f"Classic site name: {UNIFI_SITE_NAME}\n"
+        f"Classic API credentials configured: {classic_configured}\n"
+        f"TLS verification: {'on' if UNIFI_VERIFY_TLS else 'off'}\n"
+        f"Response byte cap: {MAX_RESPONSE_BYTES}\n"
+        f"Read-only: enforced (GET only)"
+    )
 
 
 # ---------------------------------------------------------------------------

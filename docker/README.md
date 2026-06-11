@@ -103,39 +103,62 @@ The Docker MCP gateway resolves secrets from Docker Desktop's encrypted
 store and injects them into the server **as environment variables** at
 launch — no plaintext `.env` on disk, and no GUI registration step.
 
-**Step A — Store the secrets**
+This option is a four-step setup (A → D below), then Claude Desktop /
+Claude Code / Codex point at the gateway in §6 / §7 / §7b.
+
+#### Step A — Store the secrets
+
+The MCP Toolkit injects every `UNIFI_*` env var the container sees from
+its encrypted secret store, including non-sensitive runtime config like
+`UNIFI_HOST`. Set each value with `docker mcp secret set`:
 
 ```bash
-docker mcp secret set UNIFI_API_KEY
-docker mcp secret set UNIFI_SITE_ID
-# Optional — only if you want the unifi_classic_* tools:
-docker mcp secret set UNIFI_CLASSIC_USERNAME
-docker mcp secret set UNIFI_CLASSIC_PASSWORD
+# Required — connection + Integration API:
+docker mcp secret set UNIFI_HOST="192.168.1.1"
+docker mcp secret set UNIFI_API_KEY="your_integration_api_key"
+docker mcp secret set UNIFI_SITE_ID="00000000-0000-0000-0000-000000000000"
 
-# List what's stored (values are masked):
-docker mcp secret ls
+# Optional — runtime config (defaults work for most homelab setups):
+docker mcp secret set UNIFI_PORT="443"                # 11443 on UniFi OS Server
+docker mcp secret set UNIFI_SITE_NAME="default"       # Classic-API short name
+docker mcp secret set UNIFI_VERIFY_TLS="false"        # true once you install a real cert
+
+# Optional — only if you want the unifi_classic_* tools to work:
+docker mcp secret set UNIFI_CLASSIC_USERNAME="readonly_local_admin"
+docker mcp secret set UNIFI_CLASSIC_PASSWORD="the_password"
 ```
 
-Non-secret values (`UNIFI_HOST`, `UNIFI_PORT`, `UNIFI_SITE_NAME`,
-`UNIFI_VERIFY_TLS`, `UNIFI_MAX_RESPONSE_BYTES`) go in the catalog entry's
-env block rather than the secret store.
+Verify the secrets are stored:
 
-**Step B — Install the custom catalog**
+```bash
+docker mcp secret list
+```
+
+You should see every variable you set listed (values are not displayed).
+Continue with Step B.
+
+#### Step B — Install the custom catalog
+
+Copy the shipped `docker/custom-catalog.yaml` into Docker Desktop's MCP
+catalog directory, renaming it to `custom.yaml`:
 
 ```bash
 mkdir -p ~/.docker/mcp/catalogs
 cp docker/custom-catalog.yaml ~/.docker/mcp/catalogs/custom.yaml
 ```
 
-Open the copied file and set the non-secret env values (`UNIFI_HOST`,
-`UNIFI_PORT`, etc.) on the `unifi-readonly` entry. The shipped catalog
-declares all secret bindings; you only need to fill in the runtime config.
+The shipped catalog already declares the binding for every `UNIFI_*` env
+var you set in Step A — you don't need to edit anything. The gateway
+resolves each binding against the secret store at launch.
 
-**Step C — Enable the server in the registry**
+#### Step C — Enable the server in the registry
 
-`~/.docker/mcp/registry.yaml` lists active servers under a single top-level
-`registry:` key. Add the `unifi-readonly` entry — do **not** overwrite the
-file if it already exists.
+`~/.docker/mcp/registry.yaml` lists which servers from your catalogs are
+active. The file has a single top-level `registry:` key. Add the
+`unifi-readonly` entry under it — **do not overwrite the file** if it
+already exists.
+
+Final shape of the file:
 
 ```yaml
 registry:
@@ -145,8 +168,30 @@ registry:
   # ... any other servers you already had stay here
 ```
 
-Connecting Claude Desktop is covered in §6 (the explicit gateway JSON
-block); that block replaces the GUI "register as a custom server" step you
+If `registry.yaml` does not exist yet, create it with exactly the snippet
+above.
+
+#### Step D — Verify
+
+Confirm the catalog and registry are wired up correctly before pointing
+any MCP client at the gateway:
+
+```bash
+docker mcp server list
+docker mcp tools list
+```
+
+`docker mcp server list` should show `unifi-readonly` as **enabled**.
+`docker mcp tools list` should print the `unifi_int_*` tools (plus the
+`unifi_classic_*` tools if you set the Classic credentials in Step A) and
+`attempt_write_operation`.
+
+If you see no tools, check that the secrets resolver socket is reachable
+(§6 bullet 3) and that the catalog file at
+`~/.docker/mcp/catalogs/custom.yaml` parses without YAML errors.
+
+Connecting Claude Desktop / Claude Code / Codex is covered in §6 / §7 /
+§7b — those blocks replace the GUI "register as a custom server" step you
 may have used with the Toolkit.
 
 > Plain `docker run` has no `.env`-free secret mechanism without Swarm,
@@ -381,6 +426,12 @@ These are identical to the Podman build. See the Podman README:
 * [§10 Rate Limiting](../podman/README.md#10-rate-limiting)
 * [§10b Response size & context-window safety](../podman/README.md#10b-response-size--context-window-safety)
 
+Besides the tools, the server exposes one MCP **resource**: `unifi://info`
+(`unifi_info`) — a plain-text config card (host, port, pinned site,
+credentials configured yes/no, TLS state, byte cap, read-only statement)
+that Claude Desktop shows as an attachable item. No secrets, no network
+I/O.
+
 ---
 
 ## 9. Security notes
@@ -433,6 +484,7 @@ These are identical to the Podman build. See the Podman README:
 | Truncation envelope with `_truncated: true` | Endpoint exceeded `UNIFI_MAX_RESPONSE_BYTES`. Follow the `_hint` or raise the cap. |
 | TLS / certificate errors | Self-signed cert. Either install a real cert or leave `UNIFI_VERIFY_TLS=false`. |
 | MCP Toolkit gateway starts but only its admin tools show up | The secret resolver socket isn't mounted. See §6 bullet 3 for the path on macOS vs Linux. |
+| Gateway log says `Warning: Secret 'UNIFI_X' not found... setting UNIFI_X=<UNKNOWN>` | Expected if you skipped that optional secret in Step A. The server treats the literal `<UNKNOWN>` as unset and falls back to the documented default. Set the secret with `docker mcp secret set UNIFI_X=...` to silence the warning. |
 | Changed `server.py`, old behaviour persists | Rebuild without cache: `docker build --no-cache -t unifi-readonly-mcp:latest .` and restart the client. |
 | stdio framing errors | Ensure `-i` is present on `docker run`. Without it Docker detaches stdin and the MCP handshake fails. |
 

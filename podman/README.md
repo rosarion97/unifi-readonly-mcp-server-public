@@ -535,6 +535,16 @@ Restart Codex or open a new project thread so the MCP server loads.
 |------|------------|-------------|
 | `attempt_write_operation` | `method="POST"`, `path="/example"` | Always returns the standard refusal string. Useful for verifying the server's read-only stance. |
 
+### Info resource
+
+Besides the tools, the server exposes one MCP **resource**:
+`unifi://info` (`unifi_info`). MCP clients like Claude Desktop list
+resources as attachable info cards. It returns a plain-text summary of the
+instance configuration — host, port, pinned site identifiers, whether the
+Integration key and Classic credentials are configured (yes/no only,
+never the values), TLS verification state, the response byte cap, and the
+read-only statement. It performs no network I/O.
+
 ---
 
 ## 9. Example prompts to use with Claude
